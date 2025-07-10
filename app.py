@@ -316,11 +316,27 @@ if df is not None:
                     dx = df_valid['X_center'].diff()
                     dy = df_valid['Y_center'].diff()
                     movement = np.sqrt(dx**2 + dy**2)
-                    fig_movement = px.line(x=df_valid['Frame'][1:], y=movement,
-                                          title="Mouvement Inter-Frame",
-                                          labels={'x': 'Frame', 'y': 'Déplacement (pixels)'})
+                    # Retirer les valeurs NaN et créer un DataFrame correct
+                    movement_clean = movement.dropna()
+                    frames_clean = df_valid['Frame'][1:len(movement_clean)+1]
+                    
+                    # Créer le graphique avec go.Scatter au lieu de px.line
+                    fig_movement = go.Figure()
+                    fig_movement.add_trace(go.Scatter(
+                        x=frames_clean, 
+                        y=movement_clean,
+                        mode='lines+markers',
+                        name='Mouvement',
+                        line=dict(color='blue', width=2)
+                    ))
                     fig_movement.add_hline(y=max_movement, line_dash="dash", line_color="red",
                                           annotation_text=f"Max autorisé: {max_movement}")
+                    fig_movement.update_layout(
+                        title="Mouvement Inter-Frame",
+                        xaxis_title="Frame",
+                        yaxis_title="Déplacement (pixels)",
+                        height=400
+                    )
                     st.plotly_chart(fig_movement, use_container_width=True)
         
         # Information sur l'algorithme de détection
