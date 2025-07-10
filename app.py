@@ -1,16 +1,3 @@
-# === CODE 3 : ANALYSE AVANCÉE ET COMPLÈTE ===
-    elif analysis_type == "🔬 Code 3 : Analyse Complète":
-        st.markdown("""
-        <div class="section-header">
-            <h2>🔬 Code 3 : Analyse Cinématique Avancée et Complète</h2>
-            <p>Analyse approfondie avec debug et métriques avancées</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Vérification des données
-        st.markdown("### 🔍 Vérification des Données")
-        if len(df_valid) > 0:
-            colimport streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.express as px
