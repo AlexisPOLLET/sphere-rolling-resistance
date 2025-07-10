@@ -1018,7 +1018,7 @@ st.sidebar.markdown("""
 
 st.sidebar.markdown("""
 ### 🎓 Research Context
-**Institution:** University Laboratory  
+**Institution:** Department of Cosmic Earth Science, Graduate School of Science, Osaka University  
 **Field:** Granular mechanics  
 **Innovation:** First humidity study  
 **Impact:** Engineering applications  
