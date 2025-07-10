@@ -47,7 +47,7 @@ st.markdown("""
 
 # Main title
 st.markdown("""
-# 🎾 Sphere Rolling Resistance Analysis Platform
+# ⚪ Sphere Rolling Resistance Analysis Platform
 ## 🔬 Complete Analysis Suite for Granular Mechanics Research
 *Upload your data and access our 3 specialized analysis tools*
 """)
