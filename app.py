@@ -56,11 +56,16 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Page navigation
-page = st.sidebar.selectbox("📋 Select Page", [
+# Page navigation - Debug version
+st.sidebar.markdown("### 📋 Navigation")
+page = st.sidebar.selectbox("Select Page", [
     "🏠 Single Analysis",
     "🔍 Multi-Experiment Comparison"
 ])
+
+# Debug: Show current page
+st.sidebar.write(f"Current page: {page}")
+st.sidebar.write(f"Available experiments: {len(st.session_state.experiments)}")
 
 # Function to create sample data with metadata
 def create_sample_data_with_metadata(experiment_name="Sample", water_content=0.0, sphere_type="Steel"):
