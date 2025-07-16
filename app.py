@@ -1059,15 +1059,415 @@ elif page == "📊 Auto-Generated Report":
         else:
             st.success("✅ Configuration expérimentale excellente! Aucune amélioration majeure nécessaire.")
 
-# ==================== SIMPLIFIED SINGLE ANALYSIS AND COMPARISON PAGES ====================
-# For brevity, I'll include placeholder sections for the other pages
+# ==================== SINGLE ANALYSIS PAGE ====================
 elif page == "🏠 Single Analysis":
-    st.markdown("# 🏠 Analyse Unique")
-    st.info("Cette section contiendrait l'interface d'analyse pour une seule expérience. Code principal disponible dans la version complète.")
+    st.markdown("""
+    # ⚪ Plateforme d'Analyse de Résistance au Roulement des Sphères
+    ## 🔬 Suite d'Analyse Complète pour la Recherche en Mécanique Granulaire
+    *Téléchargez vos données et accédez à nos 3 outils d'analyse spécialisés*
+    """)
 
+    # File upload section
+    st.markdown("""
+    <div class="upload-section">
+        <h2>📂 Téléchargez Vos Données Expérimentales</h2>
+        <p>Commencez par télécharger votre fichier CSV avec les résultats de détection pour obtenir une analyse personnalisée</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Experiment metadata input for saving
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        experiment_name = st.text_input("Nom de l'Expérience", value="Experiment_1")
+    with col2:
+        water_content = st.number_input("Teneur en Eau (%)", value=0.0, min_value=0.0, max_value=30.0)
+    with col3:
+        sphere_type = st.selectbox("Type de Sphère", ["Steel", "Plastic", "Glass", "Other"])
+
+    # File upload
+    uploaded_file = st.file_uploader(
+        "Choisissez votre fichier CSV avec les données de détection", 
+        type=['csv'],
+        help="Téléchargez un fichier CSV avec les colonnes: Frame, X_center, Y_center, Radius"
+    )
+
+    # Global variables for data
+    df = None
+    df_valid = None
+
+    # Load data or use sample data
+    if uploaded_file is not None:
+        try:
+            df = pd.read_csv(uploaded_file)
+            
+            # Check required columns
+            required_columns = ['Frame', 'X_center', 'Y_center', 'Radius']
+            if not all(col in df.columns for col in required_columns):
+                st.error(f"❌ Le fichier doit contenir les colonnes: {required_columns}")
+                st.error(f"📊 Colonnes trouvées: {list(df.columns)}")
+                df = None
+            else:
+                # Filter valid detections
+                df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
+                st.success(f"✅ Fichier chargé avec succès! {len(df)} frames détectées")
+                
+                # Add option to save experiment for comparison
+                if st.button("💾 Sauvegarder l'expérience pour comparaison"):
+                    metadata = {
+                        'experiment_name': experiment_name,
+                        'water_content': water_content,
+                        'sphere_type': sphere_type,
+                        'date': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
+                        'total_frames': len(df),
+                        'valid_detections': len(df_valid),
+                        'success_rate': len(df_valid) / len(df) * 100 if len(df) > 0 else 0
+                    }
+                    st.session_state.experiments[experiment_name] = {
+                        'data': df,
+                        'metadata': metadata
+                    }
+                    st.success(f"Expérience '{experiment_name}' sauvegardée pour comparaison!")
+        except Exception as e:
+            st.error(f"❌ Erreur lors du chargement du fichier: {str(e)}")
+    else:
+        # Option to use sample data
+        if st.button("🔬 Utiliser des données d'exemple pour la démonstration"):
+            df, _ = create_sample_data_with_metadata()
+            df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
+            st.info("📊 Données d'exemple chargées - vous pouvez maintenant explorer les fonctionnalités")
+
+    # Analysis only if data is loaded
+    if df is not None and len(df_valid) > 0:
+        
+        # Quick data overview
+        st.markdown("### 📊 Aperçu de Vos Données")
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.markdown(f"""
+            <div class="metric-card">
+                <h3>{len(df)}</h3>
+                <p>Frames Totales</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with col2:
+            st.markdown(f"""
+            <div class="metric-card">
+                <h3>{len(df_valid)}</h3>
+                <p>Détections Valides</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with col3:
+            success_rate = len(df_valid) / len(df) * 100 if len(df) > 0 else 0
+            st.markdown(f"""
+            <div class="metric-card">
+                <h3>{success_rate:.1f}%</h3>
+                <p>Taux de Succès</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        with col4:
+            avg_radius = df_valid['Radius'].mean() if len(df_valid) > 0 else 0
+            st.markdown(f"""
+            <div class="metric-card">
+                <h3>{avg_radius:.1f} px</h3>
+                <p>Rayon Moyen</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Simple analysis and visualization
+        st.markdown("### 📈 Analyse Rapide")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            # Trajectory plot
+            fig_traj = px.scatter(df_valid, x='X_center', y='Y_center', 
+                               color='Frame', 
+                               title="🛤️ Trajectoire de la Sphère",
+                               labels={'X_center': 'Position X (pixels)', 
+                                      'Y_center': 'Position Y (pixels)',
+                                      'Frame': 'Frame'})
+            fig_traj.update_yaxes(autorange="reversed")
+            st.plotly_chart(fig_traj, use_container_width=True)
+        
+        with col2:
+            # Radius evolution
+            fig_radius = px.line(df_valid, x='Frame', y='Radius',
+                               title="⚪ Évolution du Rayon Détecté",
+                               labels={'Frame': 'Numéro de Frame', 
+                                      'Radius': 'Rayon (pixels)'})
+            st.plotly_chart(fig_radius, use_container_width=True)
+        
+        # Basic Krr calculation
+        st.markdown("### 🧮 Calcul Krr Basique")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            fps = st.number_input("FPS Caméra", value=250.0, min_value=1.0)
+            pixels_per_mm = st.number_input("Calibration (px/mm)", value=5.0, min_value=0.1)
+        
+        with col2:
+            sphere_mass_g = st.number_input("Masse Sphère (g)", value=10.0, min_value=0.1)
+            angle_deg = st.number_input("Angle Inclinaison (°)", value=15.0, min_value=0.1)
+        
+        if st.button("🚀 Calculer Krr"):
+            metrics = calculate_advanced_metrics(df_valid, fps, pixels_per_mm, sphere_mass_g, angle_deg)
+            
+            if metrics and metrics['krr'] is not None:
+                with col3:
+                    st.markdown(f"""
+                    <div class="prediction-card">
+                        <h4>Résultat Krr</h4>
+                        <p><strong>{metrics['krr']:.6f}</strong></p>
+                        <p>Vitesse: {metrics['max_velocity']*1000:.1f} mm/s</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                # Additional metrics
+                st.markdown("#### 📊 Métriques Supplémentaires")
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Distance Totale", f"{metrics['distance']*1000:.1f} mm")
+                with col2:
+                    st.metric("Durée", f"{metrics['duration']:.2f} s")
+                with col3:
+                    st.metric("Efficacité Énergétique", f"{metrics['energy_efficiency']:.1f}%")
+                with col4:
+                    st.metric("Efficacité Trajectoire", f"{metrics['trajectory_efficiency']:.1f}%")
+            else:
+                st.error("❌ Impossible de calculer Krr - données insuffisantes")
+    
+    else:
+        # Message if no data is loaded
+        st.markdown("""
+        ## 🚀 Pour commencer:
+        
+        1. **📂 Téléchargez votre fichier CSV** avec vos données expérimentales
+        2. **Ou cliquez sur "Utiliser des données d'exemple"** pour explorer les fonctionnalités
+        
+        ### 📋 Format de fichier attendu:
+        Votre CSV doit contenir les colonnes suivantes:
+        - `Frame`: Numéro d'image
+        - `X_center`: Position X du centre de la sphère
+        - `Y_center`: Position Y du centre de la sphère  
+        - `Radius`: Rayon détecté de la sphère
+        """)
+
+# ==================== MULTI-EXPERIMENT COMPARISON PAGE ====================
 elif page == "🔍 Multi-Experiment Comparison":
-    st.markdown("# 🔍 Comparaison Multi-Expériences")
-    st.info("Cette section contiendrait l'interface de comparaison pour plusieurs expériences. Code principal disponible dans la version complète.")
+    
+    st.markdown("""
+    # 🔍 Comparaison Multi-Expériences
+    ## Comparez plusieurs expériences pour analyser l'effet de différents paramètres
+    """)
+    
+    # Check if experiments are available
+    if not st.session_state.experiments:
+        st.warning("⚠️ Aucune expérience disponible pour comparaison. Veuillez charger des expériences depuis la page d'analyse unique d'abord.")
+        
+        # Quick load sample experiments
+        st.markdown("### 🚀 Démarrage Rapide: Charger des Expériences d'Exemple")
+        if st.button("📊 Charger des expériences d'exemple pour comparaison"):
+            # Create sample experiments with different water contents
+            water_contents = [0, 5, 10, 15, 20]
+            for w in water_contents:
+                df, metadata = create_sample_data_with_metadata(f"Sample_W{w}%", w, "Steel")
+                st.session_state.experiments[f"Sample_W{w}%"] = {
+                    'data': df,
+                    'metadata': metadata
+                }
+            st.success("✅ Expériences d'exemple chargées!")
+            st.rerun()
+    
+    else:
+        # Display available experiments
+        st.markdown("### 📋 Expériences Disponibles")
+        
+        # Experiments overview table
+        exp_data = []
+        for name, exp in st.session_state.experiments.items():
+            meta = exp['metadata']
+            exp_data.append({
+                'Expérience': name,
+                'Teneur en Eau (%)': meta['water_content'],
+                'Type de Sphère': meta['sphere_type'],
+                'Taux de Succès (%)': f"{meta['success_rate']:.1f}",
+                'Détections Valides': meta['valid_detections'],
+                'Date': meta['date']
+            })
+        
+        exp_df = pd.DataFrame(exp_data)
+        st.dataframe(exp_df, use_container_width=True)
+        
+        # Experiment selection for comparison
+        st.markdown("### 🔬 Sélectionner les Expériences à Comparer")
+        selected_experiments = st.multiselect(
+            "Choisissez les expériences pour comparaison:",
+            options=list(st.session_state.experiments.keys()),
+            default=list(st.session_state.experiments.keys())[:min(4, len(st.session_state.experiments))]
+        )
+        
+        if len(selected_experiments) >= 2:
+            # Calculate comparison metrics
+            comparison_data = []
+            
+            for exp_name in selected_experiments:
+                exp = st.session_state.experiments[exp_name]
+                df = exp['data']
+                meta = exp['metadata']
+                df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
+                
+                # Calculate advanced metrics
+                metrics = calculate_advanced_metrics(df_valid)
+                
+                comparison_data.append({
+                    'Expérience': exp_name,
+                    'Teneur_Eau': meta['water_content'],
+                    'Type_Sphere': meta['sphere_type'],
+                    'Taux_Succes': meta['success_rate'],
+                    'Krr': metrics['krr'] if metrics else None,
+                    'Vitesse_Max': metrics['max_velocity'] if metrics else None,
+                    'Efficacite_Energie': metrics['energy_efficiency'] if metrics else None,
+                    'Efficacite_Trajectoire': metrics['trajectory_efficiency'] if metrics else None,
+                })
+            
+            comp_df = pd.DataFrame(comparison_data)
+            
+            # Visualizations
+            st.markdown("### 📊 Analyses Comparatives")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Krr vs Water Content
+                if comp_df['Krr'].notna().any():
+                    fig_krr = px.scatter(comp_df, x='Teneur_Eau', y='Krr', 
+                                       color='Type_Sphere', size='Taux_Succes',
+                                       hover_data=['Expérience'],
+                                       title="🔍 Krr vs Teneur en Eau",
+                                       labels={'Teneur_Eau': 'Teneur en Eau (%)', 
+                                              'Krr': 'Coefficient Krr'})
+                    st.plotly_chart(fig_krr, use_container_width=True)
+                else:
+                    st.warning("Pas de données Krr valides pour comparaison")
+            
+            with col2:
+                # Success rate comparison
+                fig_success = px.bar(comp_df, x='Expérience', y='Taux_Succes',
+                                   color='Teneur_Eau',
+                                   title="📈 Comparaison des Taux de Succès de Détection",
+                                   labels={'Taux_Succes': 'Taux de Succès (%)'})
+                fig_success.update_xaxes(tickangle=45)
+                st.plotly_chart(fig_success, use_container_width=True)
+            
+            # Energy efficiency comparison
+            if comp_df['Efficacite_Energie'].notna().any():
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    fig_energy = px.bar(comp_df, x='Expérience', y='Efficacite_Energie',
+                                      color='Teneur_Eau',
+                                      title="⚡ Efficacité Énergétique",
+                                      labels={'Efficacite_Energie': 'Efficacité Énergétique (%)'})
+                    fig_energy.update_xaxes(tickangle=45)
+                    st.plotly_chart(fig_energy, use_container_width=True)
+                
+                with col2:
+                    fig_traj = px.bar(comp_df, x='Expérience', y='Efficacite_Trajectoire',
+                                    color='Teneur_Eau',
+                                    title="🛤️ Efficacité de Trajectoire",
+                                    labels={'Efficacite_Trajectoire': 'Efficacité Trajectoire (%)'})
+                    fig_traj.update_xaxes(tickangle=45)
+                    st.plotly_chart(fig_traj, use_container_width=True)
+            
+            # Statistical comparison table
+            st.markdown("### 📋 Tableau de Comparaison Détaillé")
+            
+            # Format the comparison table
+            display_comp = comp_df.copy()
+            if 'Krr' in display_comp.columns:
+                display_comp['Krr'] = display_comp['Krr'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else "N/A")
+            
+            st.dataframe(display_comp, use_container_width=True)
+            
+            # Key insights
+            st.markdown("### 🔍 Insights Clés")
+            
+            if len(comp_df) >= 2:
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    best_exp = comp_df.loc[comp_df['Taux_Succes'].idxmax()]
+                    st.markdown(f"""
+                    <div class="comparison-card">
+                        <h4>🏆 Meilleure Détection</h4>
+                        <p><strong>{best_exp['Expérience']}</strong></p>
+                        <p>{best_exp['Taux_Succes']:.1f}% de succès</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                
+                with col2:
+                    if comp_df['Krr'].notna().any():
+                        min_krr_exp = comp_df.loc[comp_df['Krr'].idxmin()]
+                        st.markdown(f"""
+                        <div class="comparison-card">
+                            <h4>⚡ Krr le Plus Bas</h4>
+                            <p><strong>{min_krr_exp['Expérience']}</strong></p>
+                            <p>Krr = {min_krr_exp['Krr']:.6f}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                with col3:
+                    water_range = comp_df['Teneur_Eau'].max() - comp_df['Teneur_Eau'].min()
+                    st.markdown(f"""
+                    <div class="comparison-card">
+                        <h4>💧 Gamme d'Eau Testée</h4>
+                        <p><strong>{water_range:.1f}%</strong></p>
+                        <p>De {comp_df['Teneur_Eau'].min()}% à {comp_df['Teneur_Eau'].max()}%</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # Export comparison results
+            st.markdown("### 💾 Exporter les Résultats de Comparaison")
+            
+            csv_comparison = comp_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Télécharger les résultats de comparaison (CSV)",
+                data=csv_comparison,
+                file_name="comparaison_experiences.csv",
+                mime="text/csv"
+            )
+        
+        else:
+            st.info("Veuillez sélectionner au moins 2 expériences pour la comparaison")
+        
+        # Experiment management
+        st.markdown("### 🗂️ Gestion des Expériences")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Supprimer une Expérience:**")
+            exp_to_remove = st.selectbox("Sélectionner l'expérience à supprimer:", 
+                                       options=["Aucune"] + list(st.session_state.experiments.keys()))
+            
+            if exp_to_remove != "Aucune" and st.button("🗑️ Supprimer l'Expérience Sélectionnée"):
+                del st.session_state.experiments[exp_to_remove]
+                st.success(f"Expérience '{exp_to_remove}' supprimée!")
+                st.rerun()
+        
+        with col2:
+            st.markdown("**Tout Effacer:**")
+            st.write("⚠️ Ceci supprimera toutes les expériences sauvegardées")
+            if st.button("🧹 Effacer Toutes les Expériences"):
+                st.session_state.experiments = {}
+                st.success("Toutes les expériences effacées!")
+                st.rerun()
 
 # Footer
 st.markdown("---")
