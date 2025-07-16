@@ -6,10 +6,6 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import io
 import warnings
-from sklearn.preprocessing import PolynomialFeatures
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score
-from scipy import stats
 import datetime
 warnings.filterwarnings('ignore')
 
@@ -84,6 +80,12 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================== HELPER FUNCTIONS ====================
+
+def calculate_r2(y_true, y_pred):
+    """Calculate R-squared score"""
+    ss_res = np.sum((y_true - y_pred) ** 2)
+    ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+    return 1 - (ss_res / ss_tot) if ss_tot != 0 else 0
 
 def create_sample_data_with_metadata(experiment_name="Sample", water_content=0.0, sphere_type="Steel"):
     """Creates sample data with experimental metadata"""
@@ -273,7 +275,7 @@ def build_prediction_model(experiments_data):
             
             # Calculate R² and standard error
             y_pred = np.polyval(coeffs, x_clean)
-            r2 = r2_score(y_clean, y_pred)
+            r2 = calculate_r2(y_clean, y_pred)
             std_error = np.std(y_clean - y_pred)
             
             models['krr'] = {
@@ -299,7 +301,7 @@ def build_prediction_model(experiments_data):
             coeffs = np.polyfit(x_clean, y_clean, degree)
             
             y_pred = np.polyval(coeffs, x_clean)
-            r2 = r2_score(y_clean, y_pred)
+            r2 = calculate_r2(y_clean, y_pred)
             std_error = np.std(y_clean - y_pred)
             
             models['energy_efficiency'] = {
@@ -325,7 +327,7 @@ def build_prediction_model(experiments_data):
             coeffs = np.polyfit(x_clean, y_clean, degree)
             
             y_pred = np.polyval(coeffs, x_clean)
-            r2 = r2_score(y_clean, y_pred)
+            r2 = calculate_r2(y_clean, y_pred)
             std_error = np.std(y_clean - y_pred)
             
             models['trajectory_efficiency'] = {
