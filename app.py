@@ -580,491 +580,12 @@ page = st.sidebar.radio("Select Page:", [
     "📊 Auto-Generated Report"
 ])
 
-# ==================== PREDICTION MODULE PAGE ====================
-if page == "🎯 Prediction Module":
-    
-    st.markdown("""
-    # 🎯 Module de Prédiction
-    ## Assistant Prédictif d'Ingénierie pour la Résistance au Roulement
-    """)
-    
-    if not st.session_state.experiments:
-        st.warning("⚠️ Aucune donnée expérimentale disponible pour les prédictions. Veuillez charger des expériences depuis la page d'analyse unique d'abord.")
-        
-        if st.button("📊 Charger des données d'exemple pour la démo de prédiction"):
-            # Create sample experiments
-            water_contents = [0, 5, 10, 15, 20, 25]
-            for w in water_contents:
-                df, metadata = create_sample_data_with_metadata(f"Sample_W{w}%", w, "Steel")
-                st.session_state.experiments[f"Sample_W{w}%"] = {
-                    'data': df,
-                    'metadata': metadata
-                }
-            st.success("✅ Données d'exemple chargées pour la prédiction!")
-            st.rerun()
-    
-    else:
-        # Build prediction models
-        models = build_prediction_model(st.session_state.experiments)
-        
-        if not models:
-            st.error("❌ Données insuffisantes pour construire des modèles de prédiction fiables. Besoin d'au moins 3 expériences avec des résultats valides.")
-        else:
-            st.success(f"✅ Modèles de prédiction construits à partir de {len(st.session_state.experiments)} expériences!")
-            
-            # Model quality overview
-            st.markdown("### 📊 Évaluation de la Qualité des Modèles")
-            
-            col1, col2, col3 = st.columns(3)
-            
-            for i, (param, model) in enumerate(models.items()):
-                param_name = param.replace('_', ' ').title()
-                
-                with [col1, col2, col3][i % 3]:
-                    r2_score = model['r2']
-                    quality = "Excellent" if r2_score > 0.8 else "Bon" if r2_score > 0.6 else "Modéré" if r2_score > 0.4 else "Faible"
-                    color = "🟢" if r2_score > 0.8 else "🟡" if r2_score > 0.6 else "🟠" if r2_score > 0.4 else "🔴"
-                    
-                    st.markdown(f"""
-                    <div class="metric-card">
-                        <h4>{color} {param_name}</h4>
-                        <p>R² = {r2_score:.3f}</p>
-                        <p>{quality} Modèle</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            # Prediction interface
-            st.markdown("### 🔮 Faire des Prédictions")
-            
-            col1, col2 = st.columns([2, 3])
-            
-            with col1:
-                st.markdown("#### Conditions d'Entrée")
-                
-                # Get data ranges for validation
-                all_water = [exp['metadata']['water_content'] for exp in st.session_state.experiments.values()]
-                min_water, max_water = min(all_water), max(all_water)
-                
-                pred_water = st.slider(
-                    "Teneur en Eau (%)", 
-                    min_value=0.0, 
-                    max_value=30.0, 
-                    value=10.0, 
-                    step=0.5,
-                    help=f"Modèle entraîné sur la gamme {min_water}%-{max_water}%"
-                )
-                
-                sphere_materials = list(set([exp['metadata']['sphere_type'] for exp in st.session_state.experiments.values()]))
-                if len(sphere_materials) > 1:
-                    pred_material = st.selectbox("Matériau de la Sphère", sphere_materials)
-                else:
-                    pred_material = sphere_materials[0]
-                    st.info(f"Utilisation {pred_material} (seul matériau dans le dataset)")
-                
-                confidence_level = st.selectbox("Niveau de Confiance", [90, 95], index=1)
-                
-                # Advanced prediction options
-                with st.expander("🔧 Options Avancées"):
-                    show_equations = st.checkbox("Afficher les équations de prédiction", value=False)
-                    explain_extrapolation = st.checkbox("Expliquer les avertissements d'extrapolation", value=True)
-            
-            with col2:
-                st.markdown("#### Prédictions & Intervalles de Confiance")
-                
-                # Make predictions for each model
-                predictions = {}
-                
-                for param, model in models.items():
-                    pred, ci_lower, ci_upper, extrapolation = predict_with_confidence(
-                        model, pred_water, confidence_level/100
-                    )
-                    
-                    predictions[param] = {
-                        'value': pred,
-                        'ci_lower': ci_lower,
-                        'ci_upper': ci_upper,
-                        'extrapolation': extrapolation
-                    }
-                    
-                    param_name = param.replace('_', ' ').title()
-                    unit = ""
-                    if param == 'krr':
-                        unit = ""
-                    elif 'velocity' in param:
-                        unit = " mm/s"
-                        pred *= 1000
-                        ci_lower *= 1000
-                        ci_upper *= 1000
-                    elif 'efficiency' in param:
-                        unit = "%"
-                    elif 'force' in param:
-                        unit = " mN"
-                        pred *= 1000
-                        ci_lower *= 1000
-                        ci_upper *= 1000
-                    
-                    # Display prediction with confidence interval
-                    extrap_warning = "⚠️ " if extrapolation else ""
-                    
-                    st.markdown(f"""
-                    <div class="prediction-card">
-                        <h4>{extrap_warning}{param_name}</h4>
-                        <p><strong>Prédiction: {pred:.4f}{unit}</strong></p>
-                        <p>IC {confidence_level}%: [{ci_lower:.4f}, {ci_upper:.4f}]{unit}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    if extrapolation and explain_extrapolation:
-                        st.markdown(f"""
-                        <div class="warning-card">
-                            ⚠️ <strong>Extrapolation:</strong> {pred_water}% est en dehors de la gamme d'entraînement ({min_water}%-{max_water}%)
-                        </div>
-                        """, unsafe_allow_html=True)
-                    
-                    # Show equation if requested
-                    if show_equations:
-                        if model['degree'] == 2:
-                            a, b, c = model['coeffs']
-                            st.caption(f"📐 Équation: {param_name} = {a:.6f}×W² + {b:.6f}×W + {c:.6f}")
-                        else:
-                            a, b = model['coeffs']
-                            st.caption(f"📐 Équation: {param_name} = {a:.6f}×W + {b:.6f}")
-            
-            # Prediction visualization
-            st.markdown("### 📈 Visualisation des Prédictions")
-            
-            # Create prediction curves
-            water_range = np.linspace(max(0, min_water-5), min(30, max_water+5), 100)
-            
-            selected_param = st.selectbox("Sélectionner le paramètre à visualiser:", list(models.keys()))
-            
-            if selected_param in models:
-                model = models[selected_param]
-                param_name = selected_param.replace('_', ' ').title()
-                
-                # Calculate predictions over range
-                predictions_curve = [np.polyval(model['coeffs'], w) for w in water_range]
-                ci_upper_curve = [p + 1.96 * model['std_error'] for p in predictions_curve]
-                ci_lower_curve = [p - 1.96 * model['std_error'] for p in predictions_curve]
-                
-                # Get original data points
-                original_water = []
-                original_values = []
-                for exp_name, exp in st.session_state.experiments.items():
-                    df = exp['data']
-                    meta = exp['metadata']
-                    df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
-                    
-                    metrics = calculate_advanced_metrics(df_valid)
-                    if metrics and selected_param in metrics and metrics[selected_param] is not None:
-                        original_water.append(meta['water_content'])
-                        original_values.append(metrics[selected_param])
-                
-                # Create plot
-                fig_pred = go.Figure()
-                
-                # Add confidence interval
-                fig_pred.add_trace(go.Scatter(
-                    x=list(water_range) + list(water_range[::-1]),
-                    y=ci_upper_curve + ci_lower_curve[::-1],
-                    fill='toself',
-                    fillcolor='rgba(0,100,80,0.1)',
-                    line=dict(color='rgba(255,255,255,0)'),
-                    name='Intervalle de Confiance 95%',
-                    showlegend=True
-                ))
-                
-                # Add prediction line
-                fig_pred.add_trace(go.Scatter(
-                    x=water_range,
-                    y=predictions_curve,
-                    mode='lines',
-                    name='Prédiction',
-                    line=dict(color='blue', width=3)
-                ))
-                
-                # Add original data points
-                fig_pred.add_trace(go.Scatter(
-                    x=original_water,
-                    y=original_values,
-                    mode='markers',
-                    name='Données Expérimentales',
-                    marker=dict(size=10, color='red')
-                ))
-                
-                # Add current prediction point
-                if selected_param in predictions:
-                    fig_pred.add_trace(go.Scatter(
-                        x=[pred_water],
-                        y=[predictions[selected_param]['value']],
-                        mode='markers',
-                        name='Prédiction Actuelle',
-                        marker=dict(size=15, color='green', symbol='star')
-                    ))
-                
-                # Mark training data range
-                fig_pred.add_vrect(
-                    x0=min_water, x1=max_water,
-                    fillcolor="green", opacity=0.1,
-                    annotation_text="Gamme d'Entraînement", annotation_position="top left"
-                )
-                
-                fig_pred.update_layout(
-                    title=f"Modèle de Prédiction - {param_name}",
-                    xaxis_title="Teneur en Eau (%)",
-                    yaxis_title=param_name,
-                    height=500
-                )
-                
-                st.plotly_chart(fig_pred, use_container_width=True)
-            
-            # Application scenarios
-            st.markdown("### 🏭 Scénarios d'Application")
-            
-            scenario = st.selectbox("Sélectionner un scénario d'application:", [
-                "🏗️ Construction: Transport de matériaux granulaires",
-                "🏭 Industriel: Optimisation de convoyeurs", 
-                "🌾 Agricole: Systèmes de manutention de grains",
-                "⛏️ Minier: Systèmes de transport de minerais",
-                "🔬 Recherche: Tests comparatifs de matériaux"
-            ])
-            
-            # Scenario-specific recommendations
-            scenario_key = scenario.split(':')[0].strip()
-            
-            recommendations = {
-                "🏗️ Construction": {
-                    "optimal_range": "8-12% teneur en eau",
-                    "priority": "Minimiser la consommation d'énergie",
-                    "considerations": ["Résistance aux intempéries", "Exigences de compactage", "Efficacité de transport"]
-                },
-                "🏭 Industriel": {
-                    "optimal_range": "6-10% teneur en eau", 
-                    "priority": "Performance constante",
-                    "considerations": ["Réduction de l'usure", "Coûts énergétiques", "Fiabilité du processus"]
-                },
-                "🌾 Agricole": {
-                    "optimal_range": "Teneur en humidité naturelle",
-                    "priority": "Préservation de la qualité des grains",
-                    "considerations": ["Prévention de la détérioration", "Caractéristiques d'écoulement", "Exigences de stockage"]
-                },
-                "⛏️ Minier": {
-                    "optimal_range": "5-15% selon le minerai",
-                    "priority": "Débit maximum",
-                    "considerations": ["Contrôle de la poussière", "Usure des équipements", "Efficacité de traitement"]
-                },
-                "🔬 Recherche": {
-                    "optimal_range": "Variation systématique",
-                    "priority": "Qualité des données",
-                    "considerations": ["Reproductibilité", "Contrôle des paramètres", "Validation du modèle"]
-                }
-            }
-            
-            if scenario_key in recommendations:
-                rec = recommendations[scenario_key]
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.markdown(f"""
-                    **🎯 Gamme Recommandée**: {rec['optimal_range']}  
-                    **🔧 Priorité**: {rec['priority']}
-                    """)
-                
-                with col2:
-                    st.markdown("**💡 Considérations Clés**:")
-                    for consideration in rec['considerations']:
-                        st.markdown(f"• {consideration}")
-
-# ==================== AUTO-GENERATED REPORT PAGE ====================
-elif page == "📊 Auto-Generated Report":
-    
-    st.markdown("""
-    # 📊 Rapport d'Analyse Auto-Généré
-    ## Résumé d'Analyse Complet & Recommandations
-    """)
-    
-    if not st.session_state.experiments:
-        st.warning("⚠️ Aucune donnée expérimentale disponible pour la génération de rapport. Veuillez charger des expériences d'abord.")
-        
-        if st.button("📊 Charger des données d'exemple pour la démo de rapport"):
-            # Create comprehensive sample experiments
-            conditions = [
-                (0, "Steel"), (5, "Steel"), (10, "Steel"), (15, "Steel"), (20, "Steel"),
-                (10, "Plastic"), (15, "Plastic")
-            ]
-            
-            for water, material in conditions:
-                df, metadata = create_sample_data_with_metadata(f"{material}_W{water}%", water, material)
-                st.session_state.experiments[f"{material}_W{water}%"] = {
-                    'data': df,
-                    'metadata': metadata
-                }
-            st.success("✅ Données d'exemple complètes chargées!")
-            st.rerun()
-    
-    else:
-        # Generate report
-        with st.spinner("🔄 Génération du rapport d'analyse complet..."):
-            report_content = generate_auto_report(st.session_state.experiments)
-        
-        # Display report
-        st.markdown("### 📋 Rapport Généré")
-        
-        # Report controls
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            # Download report as text
-            st.download_button(
-                label="📥 Télécharger le rapport (TXT)",
-                data=report_content,
-                file_name=f"rapport_analyse_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                mime="text/plain"
-            )
-        
-        with col2:
-            # Generate PDF option (simplified)
-            if st.button("📄 Générer rapport PDF"):
-                st.info("💡 Fonction PDF en développement. Utilisez l'option TXT pour l'instant.")
-        
-        with col3:
-            # Email report option
-            if st.button("📧 Envoyer par email"):
-                st.info("💡 Fonction email en développement. Utilisez l'option de téléchargement.")
-        
-        # Display report content
-        st.markdown("---")
-        
-        # Report sections with expandable content
-        with st.expander("📊 Voir le Rapport Complet", expanded=True):
-            st.markdown(report_content)
-        
-        # Interactive elements for report customization
-        st.markdown("### 🔧 Personnalisation du Rapport")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("#### Options d'Inclusion")
-            include_raw_data = st.checkbox("Inclure les données brutes", value=False)
-            include_plots = st.checkbox("Inclure les graphiques", value=True)
-            include_equations = st.checkbox("Inclure les équations détaillées", value=True)
-            
-        with col2:
-            st.markdown("#### Format du Rapport")
-            report_language = st.selectbox("Langue", ["Français", "English"])
-            report_detail = st.selectbox("Niveau de détail", ["Résumé", "Standard", "Détaillé"])
-            
-        if st.button("🔄 Régénérer le Rapport avec Nouvelles Options"):
-            with st.spinner("Régénération du rapport..."):
-                # Here you would implement the custom report generation
-                # For now, we'll just show the same report
-                st.success("✅ Rapport régénéré avec les nouvelles options!")
-        
-        # Summary statistics
-        st.markdown("### 📈 Statistiques du Rapport")
-        
-        # Calculate some basic stats about the experiments
-        total_experiments = len(st.session_state.experiments)
-        water_contents = [exp['metadata']['water_content'] for exp in st.session_state.experiments.values()]
-        success_rates = [exp['metadata']['success_rate'] for exp in st.session_state.experiments.values()]
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Expériences Totales", total_experiments)
-        
-        with col2:
-            st.metric("Gamme d'Humidité", f"{min(water_contents):.1f}%-{max(water_contents):.1f}%")
-        
-        with col3:
-            st.metric("Succès Moyen", f"{np.mean(success_rates):.1f}%")
-        
-        with col4:
-            models = build_prediction_model(st.session_state.experiments)
-            model_count = len(models) if models else 0
-            st.metric("Modèles Générés", model_count)
-        
-        # Quality assessment
-        st.markdown("### 🎯 Évaluation de la Qualité")
-        
-        # Data quality indicators
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.markdown("#### Qualité des Données")
-            avg_success = np.mean(success_rates)
-            
-            if avg_success >= 80:
-                st.success("✅ Excellente qualité de détection")
-                quality_score = "A+"
-            elif avg_success >= 70:
-                st.success("✅ Bonne qualité de détection")
-                quality_score = "A"
-            elif avg_success >= 60:
-                st.warning("⚠️ Qualité de détection modérée")
-                quality_score = "B"
-            else:
-                st.error("❌ Qualité de détection faible")
-                quality_score = "C"
-            
-            st.metric("Score de Qualité", quality_score)
-        
-        with col2:
-            st.markdown("#### Fiabilité des Modèles")
-            
-            if models:
-                avg_r2 = np.mean([model['r2'] for model in models.values()])
-                
-                if avg_r2 >= 0.8:
-                    st.success("✅ Modèles très fiables")
-                    model_grade = "A+"
-                elif avg_r2 >= 0.6:
-                    st.success("✅ Modèles fiables")
-                    model_grade = "A"
-                elif avg_r2 >= 0.4:
-                    st.warning("⚠️ Modèles modérément fiables")
-                    model_grade = "B"
-                else:
-                    st.error("❌ Modèles peu fiables")
-                    model_grade = "C"
-                
-                st.metric("R² Moyen", f"{avg_r2:.3f}")
-                st.metric("Grade du Modèle", model_grade)
-            else:
-                st.warning("Aucun modèle disponible")
-        
-        # Recommendations for improvement
-        st.markdown("### 💡 Recommandations d'Amélioration")
-        
-        recommendations = []
-        
-        if total_experiments < 5:
-            recommendations.append("📊 **Augmenter le nombre d'expériences** - Collecter au moins 5-8 expériences pour des modèles robustes")
-        
-        if max(water_contents) - min(water_contents) < 15:
-            recommendations.append("💧 **Élargir la gamme d'humidité** - Tester une gamme plus large de teneurs en eau")
-        
-        if avg_success < 75:
-            recommendations.append("🔧 **Améliorer la qualité de détection** - Optimiser les paramètres de détection ou l'éclairage")
-        
-        sphere_types = set([exp['metadata']['sphere_type'] for exp in st.session_state.experiments.values()])
-        if len(sphere_types) < 2:
-            recommendations.append("⚪ **Tester différents matériaux** - Inclure plusieurs types de sphères pour la comparaison")
-        
-        if recommendations:
-            for rec in recommendations:
-                st.markdown(rec)
-        else:
-            st.success("✅ Configuration expérimentale excellente! Aucune amélioration majeure nécessaire.")
-
 # ==================== SINGLE ANALYSIS PAGE ====================
-elif page == "🏠 Single Analysis":
+if page == "🏠 Single Analysis":
     st.markdown("""
     # ⚪ Plateforme d'Analyse de Résistance au Roulement des Sphères
     ## 🔬 Suite d'Analyse Complète pour la Recherche en Mécanique Granulaire
-    *Téléchargez vos données et accédez à nos 3 outils d'analyse spécialisés*
+    *Téléchargez vos données et accédez à nos outils d'analyse spécialisés*
     """)
 
     # File upload section
@@ -1100,7 +621,7 @@ elif page == "🏠 Single Analysis":
         try:
             df = pd.read_csv(uploaded_file)
             
-            # Check required columns
+            # Check required columns# Check required columns
             required_columns = ['Frame', 'X_center', 'Y_center', 'Radius']
             if not all(col in df.columns for col in required_columns):
                 st.error(f"❌ Le fichier doit contenir les colonnes: {required_columns}")
@@ -1468,6 +989,484 @@ elif page == "🔍 Multi-Experiment Comparison":
                 st.session_state.experiments = {}
                 st.success("Toutes les expériences effacées!")
                 st.rerun()
+
+# ==================== PREDICTION MODULE PAGE ====================
+elif page == "🎯 Prediction Module":
+    
+    st.markdown("""
+    # 🎯 Module de Prédiction
+    ## Assistant Prédictif d'Ingénierie pour la Résistance au Roulement
+    """)
+    
+    if not st.session_state.experiments:
+        st.warning("⚠️ Aucune donnée expérimentale disponible pour les prédictions. Veuillez charger des expériences depuis la page d'analyse unique d'abord.")
+        
+        if st.button("📊 Charger des données d'exemple pour la démo de prédiction"):
+            # Create sample experiments
+            water_contents = [0, 5, 10, 15, 20, 25]
+            for w in water_contents:
+                df, metadata = create_sample_data_with_metadata(f"Sample_W{w}%", w, "Steel")
+                st.session_state.experiments[f"Sample_W{w}%"] = {
+                    'data': df,
+                    'metadata': metadata
+                }
+            st.success("✅ Données d'exemple chargées pour la prédiction!")
+            st.rerun()
+    
+    else:
+        # Build prediction models
+        models = build_prediction_model(st.session_state.experiments)
+        
+        if not models:
+            st.error("❌ Données insuffisantes pour construire des modèles de prédiction fiables. Besoin d'au moins 3 expériences avec des résultats valides.")
+        else:
+            st.success(f"✅ Modèles de prédiction construits à partir de {len(st.session_state.experiments)} expériences!")
+            
+            # Model quality overview
+            st.markdown("### 📊 Évaluation de la Qualité des Modèles")
+            
+            col1, col2, col3 = st.columns(3)
+            
+            for i, (param, model) in enumerate(models.items()):
+                param_name = param.replace('_', ' ').title()
+                
+                with [col1, col2, col3][i % 3]:
+                    r2_score = model['r2']
+                    quality = "Excellent" if r2_score > 0.8 else "Bon" if r2_score > 0.6 else "Modéré" if r2_score > 0.4 else "Faible"
+                    color = "🟢" if r2_score > 0.8 else "🟡" if r2_score > 0.6 else "🟠" if r2_score > 0.4 else "🔴"
+                    
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <h4>{color} {param_name}</h4>
+                        <p>R² = {r2_score:.3f}</p>
+                        <p>{quality} Modèle</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # Prediction interface
+            st.markdown("### 🔮 Faire des Prédictions")
+            
+            col1, col2 = st.columns([2, 3])
+            
+            with col1:
+                st.markdown("#### Conditions d'Entrée")
+                
+                # Get data ranges for validation
+                all_water = [exp['metadata']['water_content'] for exp in st.session_state.experiments.values()]
+                min_water, max_water = min(all_water), max(all_water)
+                
+                pred_water = st.slider(
+                    "Teneur en Eau (%)", 
+                    min_value=0.0, 
+                    max_value=30.0, 
+                    value=10.0, 
+                    step=0.5,
+                    help=f"Modèle entraîné sur la gamme {min_water}%-{max_water}%"
+                )
+                
+                sphere_materials = list(set([exp['metadata']['sphere_type'] for exp in st.session_state.experiments.values()]))
+                if len(sphere_materials) > 1:
+                    pred_material = st.selectbox("Matériau de la Sphère", sphere_materials)
+                else:
+                    pred_material = sphere_materials[0]
+                    st.info(f"Utilisation {pred_material} (seul matériau dans le dataset)")
+                
+                confidence_level = st.selectbox("Niveau de Confiance", [90, 95], index=1)
+                
+                # Advanced prediction options
+                with st.expander("🔧 Options Avancées"):
+                    show_equations = st.checkbox("Afficher les équations de prédiction", value=False)
+                    explain_extrapolation = st.checkbox("Expliquer les avertissements d'extrapolation", value=True)
+            
+            with col2:
+                st.markdown("#### Prédictions & Intervalles de Confiance")
+                
+                # Make predictions for each model
+                predictions = {}
+                
+                for param, model in models.items():
+                    pred, ci_lower, ci_upper, extrapolation = predict_with_confidence(
+                        model, pred_water, confidence_level/100
+                    )
+                    
+                    predictions[param] = {
+                        'value': pred,
+                        'ci_lower': ci_lower,
+                        'ci_upper': ci_upper,
+                        'extrapolation': extrapolation
+                    }
+                    
+                    param_name = param.replace('_', ' ').title()
+                    unit = ""
+                    if param == 'krr':
+                        unit = ""
+                    elif 'velocity' in param:
+                        unit = " mm/s"
+                        pred *= 1000
+                        ci_lower *= 1000
+                        ci_upper *= 1000
+                    elif 'efficiency' in param:
+                        unit = "%"
+                    elif 'force' in param:
+                        unit = " mN"
+                        pred *= 1000
+                        ci_lower *= 1000
+                        ci_upper *= 1000
+                    
+                    # Display prediction with confidence interval
+                    extrap_warning = "⚠️ " if extrapolation else ""
+                    
+                    st.markdown(f"""
+                    <div class="prediction-card">
+                        <h4>{extrap_warning}{param_name}</h4>
+                        <p><strong>Prédiction: {pred:.4f}{unit}</strong></p>
+                        <p>IC {confidence_level}%: [{ci_lower:.4f}, {ci_upper:.4f}]{unit}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if extrapolation and explain_extrapolation:
+                        st.markdown(f"""
+                        <div class="warning-card">
+                            ⚠️ <strong>Extrapolation:</strong> {pred_water}% est en dehors de la gamme d'entraînement ({min_water}%-{max_water}%)
+                        </div>
+                        """, unsafe_allow_html=True)
+                    
+                    # Show equation if requested
+                    if show_equations:
+                        if model['degree'] == 2:
+                            a, b, c = model['coeffs']
+                            st.caption(f"📐 Équation: {param_name} = {a:.6f}×W² + {b:.6f}×W + {c:.6f}")
+                        else:
+                            a, b = model['coeffs']
+            
+            # Prediction visualization
+            st.markdown("### 📈 Visualisation des Prédictions")
+            
+            # Create prediction curves
+            water_range = np.linspace(max(0, min_water-5), min(30, max_water+5), 100)
+            
+            selected_param = st.selectbox("Sélectionner le paramètre à visualiser:", list(models.keys()))
+            
+            if selected_param in models:
+                model = models[selected_param]
+                param_name = selected_param.replace('_', ' ').title()
+                
+                # Calculate predictions over range
+                predictions_curve = [np.polyval(model['coeffs'], w) for w in water_range]
+                ci_upper_curve = [p + 1.96 * model['std_error'] for p in predictions_curve]
+                ci_lower_curve = [p - 1.96 * model['std_error'] for p in predictions_curve]
+                
+                # Get original data points
+                original_water = []
+                original_values = []
+                for exp_name, exp in st.session_state.experiments.items():
+                    df = exp['data']
+                    meta = exp['metadata']
+                    df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
+                    
+                    metrics = calculate_advanced_metrics(df_valid)
+                    if metrics and selected_param in metrics and metrics[selected_param] is not None:
+                        original_water.append(meta['water_content'])
+                        original_values.append(metrics[selected_param])
+                
+                # Create plot
+                fig_pred = go.Figure()
+                
+                # Add confidence interval
+                fig_pred.add_trace(go.Scatter(
+                    x=list(water_range) + list(water_range[::-1]),
+                    y=ci_upper_curve + ci_lower_curve[::-1],
+                    fill='toself',
+                    fillcolor='rgba(0,100,80,0.1)',
+                    line=dict(color='rgba(255,255,255,0)'),
+                    name='Intervalle de Confiance 95%',
+                    showlegend=True
+                ))
+                
+                # Add prediction line
+                fig_pred.add_trace(go.Scatter(
+                    x=water_range,
+                    y=predictions_curve,
+                    mode='lines',
+                    name='Prédiction',
+                    line=dict(color='blue', width=3)
+                ))
+                
+                # Add original data points
+                fig_pred.add_trace(go.Scatter(
+                    x=original_water,
+                    y=original_values,
+                    mode='markers',
+                    name='Données Expérimentales',
+                    marker=dict(size=10, color='red')
+                ))
+                
+                # Add current prediction point
+                if selected_param in predictions:
+                    fig_pred.add_trace(go.Scatter(
+                        x=[pred_water],
+                        y=[predictions[selected_param]['value']],
+                        mode='markers',
+                        name='Prédiction Actuelle',
+                        marker=dict(size=15, color='green', symbol='star')
+                    ))
+                
+                # Mark training data range
+                fig_pred.add_vrect(
+                    x0=min_water, x1=max_water,
+                    fillcolor="green", opacity=0.1,
+                    annotation_text="Gamme d'Entraînement", annotation_position="top left"
+                )
+                
+                fig_pred.update_layout(
+                    title=f"Modèle de Prédiction - {param_name}",
+                    xaxis_title="Teneur en Eau (%)",
+                    yaxis_title=param_name,
+                    height=500
+                )
+                
+                st.plotly_chart(fig_pred, use_container_width=True)
+            
+            # Application scenarios
+            st.markdown("### 🏭 Scénarios d'Application")
+            
+            scenario = st.selectbox("Sélectionner un scénario d'application:", [
+                "🏗️ Construction: Transport de matériaux granulaires",
+                "🏭 Industriel: Optimisation de convoyeurs", 
+                "🌾 Agricole: Systèmes de manutention de grains",
+                "⛏️ Minier: Systèmes de transport de minerais",
+                "🔬 Recherche: Tests comparatifs de matériaux"
+            ])
+            
+            # Scenario-specific recommendations
+            scenario_key = scenario.split(':')[0].strip()
+            
+            recommendations = {
+                "🏗️ Construction": {
+                    "optimal_range": "8-12% teneur en eau",
+                    "priority": "Minimiser la consommation d'énergie",
+                    "considerations": ["Résistance aux intempéries", "Exigences de compactage", "Efficacité de transport"]
+                },
+                "🏭 Industriel": {
+                    "optimal_range": "6-10% teneur en eau", 
+                    "priority": "Performance constante",
+                    "considerations": ["Réduction de l'usure", "Coûts énergétiques", "Fiabilité du processus"]
+                },
+                "🌾 Agricole": {
+                    "optimal_range": "Teneur en humidité naturelle",
+                    "priority": "Préservation de la qualité des grains",
+                    "considerations": ["Prévention de la détérioration", "Caractéristiques d'écoulement", "Exigences de stockage"]
+                },
+                "⛏️ Minier": {
+                    "optimal_range": "5-15% selon le minerai",
+                    "priority": "Débit maximum",
+                    "considerations": ["Contrôle de la poussière", "Usure des équipements", "Efficacité de traitement"]
+                },
+                "🔬 Recherche": {
+                    "optimal_range": "Variation systématique",
+                    "priority": "Qualité des données",
+                    "considerations": ["Reproductibilité", "Contrôle des paramètres", "Validation du modèle"]
+                }
+            }
+            
+            if scenario_key in recommendations:
+                rec = recommendations[scenario_key]
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown(f"""
+                    **🎯 Gamme Recommandée**: {rec['optimal_range']}  
+                    **🔧 Priorité**: {rec['priority']}
+                    """)
+                
+                with col2:
+                    st.markdown("**💡 Considérations Clés**:")
+                    for consideration in rec['considerations']:
+                        st.markdown(f"• {consideration}")
+
+# ==================== AUTO-GENERATED REPORT PAGE ====================
+elif page == "📊 Auto-Generated Report":
+    
+    st.markdown("""
+    # 📊 Rapport d'Analyse Auto-Généré
+    ## Résumé d'Analyse Complet & Recommandations
+    """)
+    
+    if not st.session_state.experiments:
+        st.warning("⚠️ Aucune donnée expérimentale disponible pour la génération de rapport. Veuillez charger des expériences d'abord.")
+        
+        if st.button("📊 Charger des données d'exemple pour la démo de rapport"):
+            # Create comprehensive sample experiments
+            conditions = [
+                (0, "Steel"), (5, "Steel"), (10, "Steel"), (15, "Steel"), (20, "Steel"),
+                (10, "Plastic"), (15, "Plastic")
+            ]
+            
+            for water, material in conditions:
+                df, metadata = create_sample_data_with_metadata(f"{material}_W{water}%", water, material)
+                st.session_state.experiments[f"{material}_W{water}%"] = {
+                    'data': df,
+                    'metadata': metadata
+                }
+            st.success("✅ Données d'exemple complètes chargées!")
+            st.rerun()
+    
+    else:
+        # Generate report
+        with st.spinner("🔄 Génération du rapport d'analyse complet..."):
+            report_content = generate_auto_report(st.session_state.experiments)
+        
+        # Display report
+        st.markdown("### 📋 Rapport Généré")
+        
+        # Report controls
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            # Download report as text
+            st.download_button(
+                label="📥 Télécharger le rapport (TXT)",
+                data=report_content,
+                file_name=f"rapport_analyse_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                mime="text/plain"
+            )
+        
+        with col2:
+            # Generate PDF option (simplified)
+            if st.button("📄 Générer rapport PDF"):
+                st.info("💡 Fonction PDF en développement. Utilisez l'option TXT pour l'instant.")
+        
+        with col3:
+            # Email report option
+            if st.button("📧 Envoyer par email"):
+                st.info("💡 Fonction email en développement. Utilisez l'option de téléchargement.")
+        
+        # Display report content
+        st.markdown("---")
+        
+        # Report sections with expandable content
+        with st.expander("📊 Voir le Rapport Complet", expanded=True):
+            st.markdown(report_content)
+        
+        # Interactive elements for report customization
+        st.markdown("### 🔧 Personnalisation du Rapport")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### Options d'Inclusion")
+            include_raw_data = st.checkbox("Inclure les données brutes", value=False)
+            include_plots = st.checkbox("Inclure les graphiques", value=True)
+            include_equations = st.checkbox("Inclure les équations détaillées", value=True)
+            
+        with col2:
+            st.markdown("#### Format du Rapport")
+            report_language = st.selectbox("Langue", ["Français", "English"])
+            report_detail = st.selectbox("Niveau de détail", ["Résumé", "Standard", "Détaillé"])
+            
+        if st.button("🔄 Régénérer le Rapport avec Nouvelles Options"):
+            with st.spinner("Régénération du rapport..."):
+                # Here you would implement the custom report generation
+                # For now, we'll just show the same report
+                st.success("✅ Rapport régénéré avec les nouvelles options!")
+        
+        # Summary statistics
+        st.markdown("### 📈 Statistiques du Rapport")
+        
+        # Calculate some basic stats about the experiments
+        total_experiments = len(st.session_state.experiments)
+        water_contents = [exp['metadata']['water_content'] for exp in st.session_state.experiments.values()]
+        success_rates = [exp['metadata']['success_rate'] for exp in st.session_state.experiments.values()]
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Expériences Totales", total_experiments)
+        
+        with col2:
+            st.metric("Gamme d'Humidité", f"{min(water_contents):.1f}%-{max(water_contents):.1f}%")
+        
+        with col3:
+            st.metric("Succès Moyen", f"{np.mean(success_rates):.1f}%")
+        
+        with col4:
+            models = build_prediction_model(st.session_state.experiments)
+            model_count = len(models) if models else 0
+            st.metric("Modèles Générés", model_count)
+        
+        # Quality assessment
+        st.markdown("### 🎯 Évaluation de la Qualité")
+        
+        # Data quality indicators
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### Qualité des Données")
+            avg_success = np.mean(success_rates)
+            
+            if avg_success >= 80:
+                st.success("✅ Excellente qualité de détection")
+                quality_score = "A+"
+            elif avg_success >= 70:
+                st.success("✅ Bonne qualité de détection")
+                quality_score = "A"
+            elif avg_success >= 60:
+                st.warning("⚠️ Qualité de détection modérée")
+                quality_score = "B"
+            else:
+                st.error("❌ Qualité de détection faible")
+                quality_score = "C"
+            
+            st.metric("Score de Qualité", quality_score)
+        
+        with col2:
+            st.markdown("#### Fiabilité des Modèles")
+            
+            if models:
+                avg_r2 = np.mean([model['r2'] for model in models.values()])
+                
+                if avg_r2 >= 0.8:
+                    st.success("✅ Modèles très fiables")
+                    model_grade = "A+"
+                elif avg_r2 >= 0.6:
+                    st.success("✅ Modèles fiables")
+                    model_grade = "A"
+                elif avg_r2 >= 0.4:
+                    st.warning("⚠️ Modèles modérément fiables")
+                    model_grade = "B"
+                else:
+                    st.error("❌ Modèles peu fiables")
+                    model_grade = "C"
+                
+                st.metric("R² Moyen", f"{avg_r2:.3f}")
+                st.metric("Grade du Modèle", model_grade)
+            else:
+                st.warning("Aucun modèle disponible")
+        
+        # Recommendations for improvement
+        st.markdown("### 💡 Recommandations d'Amélioration")
+        
+        recommendations = []
+        
+        if total_experiments < 5:
+            recommendations.append("📊 **Augmenter le nombre d'expériences** - Collecter au moins 5-8 expériences pour des modèles robustes")
+        
+        if max(water_contents) - min(water_contents) < 15:
+            recommendations.append("💧 **Élargir la gamme d'humidité** - Tester une gamme plus large de teneurs en eau")
+        
+        if avg_success < 75:
+            recommendations.append("🔧 **Améliorer la qualité de détection** - Optimiser les paramètres de détection ou l'éclairage")
+        
+        sphere_types = set([exp['metadata']['sphere_type'] for exp in st.session_state.experiments.values()])
+        if len(sphere_types) < 2:
+            recommendations.append("⚪ **Tester différents matériaux** - Inclure plusieurs types de sphères pour la comparaison")
+        
+        if recommendations:
+            for rec in recommendations:
+                st.markdown(rec)
+        else:
+            st.success("✅ Configuration expérimentale excellente! Aucune amélioration majeure nécessaire.")
 
 # Footer
 st.markdown("---")
