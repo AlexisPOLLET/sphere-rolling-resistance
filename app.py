@@ -605,57 +605,166 @@ if page == "🏠 Analyse Unique":
     with col3:
         sphere_type = st.selectbox("Type de Sphère", ["Steel", "Plastic", "Glass", "Other"])
 
-    # File upload
-    uploaded_file = st.file_uploader(
-        "Choisissez votre fichier CSV avec les données de détection", 
-        type=['csv'],
-        help="Téléchargez un fichier CSV avec les colonnes: Frame, X_center, Y_center, Radius"
-    )
-
-    # Global variables for data
+    # Initialize data variables
     df = None
     df_valid = None
-
-    # Load data or use sample data
-    if uploaded_file is not None:
-        try:
-            df = pd.read_csv(uploaded_file)
-            
-            # Check required columns
-            required_columns = ['Frame', 'X_center', 'Y_center', 'Radius']
-            if not all(col in df.columns for col in required_columns):
-                st.error(f"❌ Le fichier doit contenir les colonnes: {required_columns}")
-                st.error(f"📊 Colonnes trouvées: {list(df.columns)}")
-                df = None
-            else:
-                # Filter valid detections
-                df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
-                st.success(f"✅ Fichier chargé avec succès! {len(df)} frames détectées")
+    
+    # Create tabs for different input methods
+    tab1, tab2, tab3 = st.tabs(["📁 Upload Fichier", "🔬 Données d'Exemple", "✍️ Saisie Manuelle"])
+    
+    with tab1:
+        st.markdown("### 📁 Télécharger un Fichier CSV")
+        
+        # File upload
+        uploaded_file = st.file_uploader(
+            "Choisissez votre fichier CSV avec les données de détection", 
+            type=['csv'],
+            help="Téléchargez un fichier CSV avec les colonnes: Frame, X_center, Y_center, Radius",
+            key="file_uploader"
+        )
+        
+        if uploaded_file is not None:
+            try:
+                # Show file details
+                st.info(f"📄 Fichier: {uploaded_file.name} ({uploaded_file.size} bytes)")
                 
-                # Add option to save experiment for comparison
-                if st.button("💾 Sauvegarder l'expérience pour comparaison"):
-                    metadata = {
-                        'experiment_name': experiment_name,
-                        'water_content': water_content,
-                        'sphere_type': sphere_type,
-                        'date': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
-                        'total_frames': len(df),
-                        'valid_detections': len(df_valid),
-                        'success_rate': len(df_valid) / len(df) * 100 if len(df) > 0 else 0
-                    }
-                    st.session_state.experiments[experiment_name] = {
-                        'data': df,
-                        'metadata': metadata
-                    }
-                    st.success(f"Expérience '{experiment_name}' sauvegardée pour comparaison!")
-        except Exception as e:
-            st.error(f"❌ Erreur lors du chargement du fichier: {str(e)}")
-    else:
-        # Option to use sample data
-        if st.button("🔬 Utiliser des données d'exemple pour la démonstration"):
-            df, _ = create_sample_data_with_metadata()
+                # Read the file
+                df = pd.read_csv(uploaded_file)
+                
+                st.success(f"✅ Fichier lu avec succès! {len(df)} lignes trouvées")
+                
+                # Show first few rows for verification
+                st.markdown("#### 👀 Aperçu des Données")
+                st.dataframe(df.head(10))
+                
+                # Check required columns
+                required_columns = ['Frame', 'X_center', 'Y_center', 'Radius']
+                missing_columns = [col for col in required_columns if col not in df.columns]
+                
+                if missing_columns:
+                    st.error(f"❌ Colonnes manquantes: {missing_columns}")
+                    st.error(f"📊 Colonnes trouvées: {list(df.columns)}")
+                    st.info("💡 Astuce: Vérifiez que votre fichier CSV contient bien les colonnes requises")
+                    df = None
+                else:
+                    st.success("✅ Toutes les colonnes requises sont présentes!")
+                    
+                    # Show column info
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Frames Total", len(df))
+                    with col2:
+                        valid_detections = len(df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)])
+                        st.metric("Détections Valides", valid_detections)
+                    with col3:
+                        success_rate = (valid_detections / len(df) * 100) if len(df) > 0 else 0
+                        st.metric("Taux de Succès", f"{success_rate:.1f}%")
+                    with col4:
+                        zero_detections = len(df) - valid_detections
+                        st.metric("Détections Nulles", zero_detections)
+                    
+                    # Filter valid detections
+                    df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
+                    
+                    if len(df_valid) == 0:
+                        st.warning("⚠️ Aucune détection valide trouvée! Vérifiez vos données.")
+                    else:
+                        st.success(f"✅ {len(df_valid)} détections valides prêtes pour l'analyse!")
+                        
+                        # Option to save experiment
+                        if st.button("💾 Sauvegarder l'expérience pour comparaison", key="save_uploaded"):
+                            metadata = {
+                                'experiment_name': experiment_name,
+                                'water_content': water_content,
+                                'sphere_type': sphere_type,
+                                'date': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                'total_frames': len(df),
+                                'valid_detections': len(df_valid),
+                                'success_rate': success_rate
+                            }
+                            st.session_state.experiments[experiment_name] = {
+                                'data': df,
+                                'metadata': metadata
+                            }
+                            st.success(f"Expérience '{experiment_name}' sauvegardée pour comparaison!")
+                            
+            except Exception as e:
+                st.error(f"❌ Erreur lors du chargement du fichier: {str(e)}")
+                st.info("💡 Astuces de dépannage:")
+                st.info("• Vérifiez que le fichier est bien un CSV")
+                st.info("• Vérifiez l'encodage (UTF-8 recommandé)")
+                st.info("• Vérifiez les séparateurs (virgules)")
+    
+    with tab2:
+        st.markdown("### 🔬 Utiliser des Données d'Exemple")
+        st.info("Parfait pour tester l'application sans fichier CSV")
+        
+        # Sample data options
+        col1, col2 = st.columns(2)
+        with col1:
+            sample_water = st.slider("Teneur en Eau d'Exemple (%)", 0.0, 25.0, 10.0, 0.5)
+        with col2:
+            sample_sphere = st.selectbox("Type de Sphère d'Exemple", ["Steel", "Plastic", "Glass"])
+        
+        if st.button("🔬 Générer des données d'exemple", key="generate_sample"):
+            df, metadata = create_sample_data_with_metadata(
+                experiment_name=f"Sample_{sample_water}%", 
+                water_content=sample_water, 
+                sphere_type=sample_sphere
+            )
             df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
-            st.info("📊 Données d'exemple chargées - vous pouvez maintenant explorer les fonctionnalités")
+            
+            st.success("📊 Données d'exemple générées avec succès!")
+            st.info(f"✅ {len(df)} frames générées, {len(df_valid)} détections valides")
+            
+            # Show sample data preview
+            st.markdown("#### 👀 Aperçu des Données d'Exemple")
+            st.dataframe(df.head(10))
+    
+    with tab3:
+        st.markdown("### ✍️ Saisie Manuelle de Données")
+        st.info("Pour saisir quelques points de données manuellement")
+        
+        # Manual data entry
+        if 'manual_data' not in st.session_state:
+            st.session_state.manual_data = []
+        
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            frame_input = st.number_input("Frame", value=1, min_value=1, key="manual_frame")
+        with col2:
+            x_input = st.number_input("X_center", value=100.0, key="manual_x")
+        with col3:
+            y_input = st.number_input("Y_center", value=100.0, key="manual_y")
+        with col4:
+            radius_input = st.number_input("Radius", value=20.0, min_value=0.1, key="manual_radius")
+        with col5:
+            if st.button("➕ Ajouter Point", key="add_manual"):
+                st.session_state.manual_data.append({
+                    'Frame': frame_input,
+                    'X_center': x_input,
+                    'Y_center': y_input,
+                    'Radius': radius_input
+                })
+                st.success("Point ajouté!")
+        
+        if st.session_state.manual_data:
+            st.markdown(f"#### 📊 Données Saisies ({len(st.session_state.manual_data)} points)")
+            manual_df = pd.DataFrame(st.session_state.manual_data)
+            st.dataframe(manual_df)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Utiliser ces données", key="use_manual"):
+                    df = manual_df
+                    df_valid = df[(df['X_center'] != 0) & (df['Y_center'] != 0) & (df['Radius'] != 0)]
+                    st.success("Données manuelles chargées pour l'analyse!")
+            
+            with col2:
+                if st.button("🗑️ Effacer tout", key="clear_manual"):
+                    st.session_state.manual_data = []
+                    st.success("Données effacées!")
+                    st.rerun()
 
     # Analysis only if data is loaded
     if df is not None and len(df_valid) > 0:
